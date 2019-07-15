@@ -217,7 +217,7 @@ class PermissionClient():
                 self.config_check_interval < time.time()):
             # get last permissions update from permission service
             url = self.service_url + 'last_update'
-            response = requests.get(url, headers=self.headers, timeout=30)
+            response = requests.get(url, headers=self.headers, timeout=120)
             if response.status_code == requests.codes.ok:
                 permissions_updated_at = datetime.strptime(
                     response.json()['permissions_updated_at'],
