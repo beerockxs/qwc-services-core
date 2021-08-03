@@ -1,3 +1,6 @@
+[![PyPI version](https://img.shields.io/pypi/v/qwc-services-core)](https://pypi.org/project/qwc-services-core)
+
+
 QWC Services Core
 =================
 
@@ -26,44 +29,7 @@ Overview
 
 The QWC Services are a collection of microservices providing configurations for and authorized access to different QWC Map Viewer components.
 
-                                   external services    |    internal services    
-                                                        |
-    +-------------------+
-    |                   |
-    |  Admin GUI        +-----------------------------------------------------------------------------+
-    |                   |                                                                             |
-    +-------------------+                                                                             |
-                                                                                                      |
-    +-------------------+                                                                             |
-    |                   |  group registration requests                                                |
-    |  Registration GUI +-------------------------------------------------------------------------+   |
-    |                   |                                                                         |   |
-    +-------------------+                                                                         |   |
-                                                                                                  |   |
-                                +-------------------+                                             |   |
-                 authentication |                   |                                             |   |
-              +----------------->  Auth Service     +-----------------------------------------+   |   |
-              |                 |  (qwc-db-auth)    |                                         |   |   |
-              |                 +-------------------+                                         |   |   |
-              |                                                                               |   |   |
-    +---------+---------+                                                                     |   |   |
-    |                   |  viewer config and maps                                             |   |   |
-    |  QWC Map Viewer   +---------------------------------------------+                       |   |   |
-    |                   |                                             |                       |   |   |
-    +---------+---------+                                             |                       |   |   |
-              |                                                       |                       |   |   |
-              |                 +-------------------+       +---------v---------+       .-----v---v---v-----.
-              |  GeoJSON        |                   |       |                   +------->                   |
-              +----------------->  Data Service     +---+--->  Config Service   |       |  Config DB        |
-              |                 |                   |   |   |                   +---+   |                   |
-              |                 +-------------------+   |   +---------+---------+   |   '-------------------'
-              |                                         |             |             |
-              |                 +-------------------+   |   +---------v---------+   |   .-------------------.
-              |  WMS            |                   +---+   |                   |   +--->                   |
-              +----------------->  OGC Service      |       |  QGIS Server      |       |  Geo DB           |
-                                |                   +------->                   +------->                   |
-                                +-------------------+       +-------------------+       '-------------------'
-
+![qwc-services-arch](doc/qwc-services-arch.png)
 
 QWC Services
 ------------
@@ -74,10 +40,15 @@ Applications:
 * [Registration GUI](https://github.com/qwc-services/qwc-registration-gui)
 
 REST services:
-* [Config service](https://github.com/qwc-services/qwc-config-service)
+* [Authentication service with local user database](https://github.com/qwc-services/qwc-db-auth)
 * [OGC service](https://github.com/qwc-services/qwc-ogc-service)
 * [Data service](https://github.com/qwc-services/qwc-data-service)
-* [Authentication service with local user database](https://github.com/qwc-services/qwc-db-auth)
+* [Permalink service](https://github.com/qwc-services/qwc-permalink-service)
+* [Elevation service](https://github.com/qwc-services/qwc-elevation-service)
+* [Mapinfo service](https://github.com/qwc-services/qwc-mapinfo-service)
+* [Document service](https://github.com/qwc-services/qwc-document-service)
+* [Print service](https://github.com/qwc-services/qwc-print-service)
+* [Fulltext search service](https://github.com/qwc-services/qwc-fulltext-search-service)
 
 Configuration database:
 * [DB schema and migrations](https://github.com/qwc-services/qwc-config-db)
@@ -104,8 +75,98 @@ Install Docker and setup containers (see [qwc-docker README](https://github.com/
 
     cd qwc-docker/
     cp docker-compose-example.yml docker-compose.yml
-    cp volumes/qwc2/themesConfig-example.json volumes/qwc2/themesConfig.json
-    docker-compose build
+
+Create a secret key:
+
+    python3 -c 'import secrets; print("JWT_SECRET_KEY=\"%s\"" % secrets.token_hex(48))' >.env
+
+Set permissions for writable volumes:
+
+    sudo chown -R www-data:www-data volumes/qgs-resources
+    sudo chown -R www-data:www-data demo-config
+    sudo chown -R www-data:www-data volumes/qwc2/assets
+
+    sudo chown 8983:8983 volumes/solr/data
+
+### Run containers
+
+Start all containers:
+
+    docker-compose up -d
+
+Follow log output:
+
+    docker-compose logs -f
+
+Open map viewer:
+
+    http://localhost:8088/
+
+Open Admin GUI (Admin user: `admin:admin`, requires password change on first login):
+
+    http://localhost:8088/qwc_admin
+
+Sign in (Demo user: `demo:demo`):
+
+    http://localhost:8088/auth/login
+
+Sign out:
+
+    http://localhost:8088/auth/logout
+
+Stop all containers:
+
+    docker-compose down
+
+### Add a QGIS project
+
+Setup PostgreSQL connection service file `~/.pg_service.conf`
+for DB connections from the host machine to PostGIS container:
+
+```
+cat >>~/.pg_service.conf <<EOS
+[qwc_geodb]
+host=localhost
+port=5439
+dbname=qwc_demo
+user=qwc_service
+password=qwc_service
+sslmode=disable
+EOS
+```
+
+* Open project `demo-projects/natural-earth-countries.qgz` with QGIS and save as `volumes/config-in/default/qgis_projects/natural-earth-countries.qgs`
+* Update configuration in Admin GUI
+
+### Add an editable layer
+
+* Add `edit_polygon` layer in QGIS project
+* Add map and data resources with permissions
+* Update configuration in Admin GUI
+
+### Add a custom edit form
+
+Adapt edit form with Drag and Drop Designer:
+* Change attribute form type to `Drag and Drop Designer`.
+* Change form layout
+* Update configuration in Admin GUI
+
+Use the previously generated edit form in `volumes/qwc2/assets/forms/autogen/` as a template.
+
+Edit and save the form with QT Designer.
+
+Copy the form into the volumes:
+
+    sudo cp natural-earth-countries_edit_polygons.ui volumes/config-in/default/qgis_projects/
+    sudo cp natural-earth-countries_edit_polygons.ui volumes/qgs-resources/
+
+Change attribute form type to `Provide ui-file`.
+
+Select `natural-earth-countries_edit_polygons.ui` as `Edit UI`.
+
+Update configuration in Admin GUI.
+
+### Customize QWC2 Viewer
 
 Clone and build QWC2 Demo App (see [Quick start](https://github.com/qgis/qwc2-demo-app/blob/master/doc/QWC2_Documentation.md#quick-start)) (or use your custom QWC2 build):
 
@@ -138,33 +199,7 @@ Copy QWC2 files from a build:
       config.json > $DSTDIR/qwc2/config.json && \
     cd -
 
-Start all containers:
-
-    docker-compose up -d
-
-Follow log output:
-
-    docker-compose logs -f
-
-Open map viewer:
-
-    http://localhost:8088/
-
-Open Admin GUI (Admin user: `admin:admin`, requires password change on first login):
-
-    http://localhost:8088/qwc_admin
-
-Sign in (Demo user: `demo:demo`):
-
-    http://localhost:8088/auth/login
-
-Sign out:
-
-    http://localhost:8088/auth/logout
-
-Stop all containers:
-
-    docker-compose down
+    cp volumes/qwc2/themesConfig-example.json volumes/qwc2/themesConfig.json
 
 
 Configuration
@@ -194,157 +229,17 @@ An existing ConfigDB can be updated to the latest schema by running the database
 The QWC Services are generally configured using environment variables.
 These can be set when running the services locally or in `docker-compose.yml` when using Docker.
 
+Common configuration:
+
+ENV                   | default value      | description
+----------------------|--------------------|---------
+`CONFIG_PATH`         | .                  | Base path for service configuration files
+`JWT_SECRET_KEY`      | `********`         | secret key for JWT token
+`TENANT_URL_RE`       | None               | Regex for tenant extraction from base URL. Example: ^https?://.+?/(.+?)/
+`TENANT_HEADER`       | None               | Tenant Header name. Example: Tenant
+
+
 See READMEs of services for details.
-
-
-#### [Map Viewer](https://github.com/qwc-services/qwc-map-viewer#configuration)
-
-ENV                                     | default value                         | description
-----------------------------------------|---------------------------------------|---------
-`JWT_SECRET_KEY`                        | `********`                            | secret key for JWT token (same for all services) 
-`CONFIG_SERVICE_URL`                    | `http://localhost:5010/`              | QWC Config service URL
-`OGC_SERVICE_URL`                       | `http://localhost:5013/`              | QWC OGC service URL or QGIS server URL
-`DATA_SERVICE_URL`                      | `http://localhost:5012/`              | QWC Data service URL
-
-
-ENV (optional)                          | default value                         | description
-----------------------------------------|---------------------------------------|---------
-`QWC2_PATH`                             | `qwc2/`                               | QWC2 files path
-`QWC2_CONFIG`                           | `$QWC2_PATH/config.json`              | QWC2 `config.json` path
-`QWC2_VIEWERS_PATH`                     | `$QWC2_PATH/viewers/`                 | QWC2 custom viewers path
-`CONFIG_CHECK_INTERVAL`                 | `60`s                                 | check if config cache is valid every x seconds
-`DEFAULT_CONFIG_CACHE_DURATION`         | `86400`s (24h)                        | time in seconds until config cache expiry
-`ORIGIN_CONFIG`                         | `{"host": {"_intern_": "^127.0.0.1(:\\\\d+)?$"}}` | origin detection rules
-`AUTH_SERVICES_CONFIG`                  | `{}`                                  | auth service lookups
-`AUTH_SERVICE_URL`                      | from `config.json`                    | QWC Authorization service URL
-`DOCUMENT_SERVICE_URL`                  | from `config.json`                    | QWC Document service URL
-`ELEVATION_SERVICE_URL`                 | from `config.json`                    | QWC Elevation service URL
-`INFO_SERVICE_URL`                      | from `config.json`                    | QWC Feature Info proxy service URL
-`LEGEND_SERVICE_URL`                    | from `config.json`                    | QWC Data service URL
-`MAPINFO_SERVICE_URL`                   | from `config.json`                    | QWC Map Info service URL
-`PERMALINK_SERVICE_URL`                 | from `config.json`                    | QWC Permalink service URL
-`PRINT_SERVICE_URL`                     | from `config.json`                    | QWC Print service URL
-`SEARCH_SERVICE_URL`                    | from `config.json`                    | QWC Search service URL
-
-
-[Custom viewer configurations](https://github.com/qwc-services/qwc-map-viewer#custom-viewer-configurations) can be added by placing a `<viewer>.json` and/or `<viewer>.html` for each custom viewer into the `$QWC2_VIEWERS_PATH` directory. The custom viewers can be opened by appending the viewer name to the base URL: `http://localhost:8088/<viewer>/`.
-
-
-#### [Admin GUI](https://github.com/qwc-services/qwc-admin-gui#configuration)
-
-ENV                                     | default value                         | description
-----------------------------------------|---------------------------------------|---------
-`JWT_SECRET_KEY`                        | `********`                            | secret key for JWT token (same for all services) 
-
-
-ENV (optional)                          | default value                         | description
-----------------------------------------|---------------------------------------|---------
-`USER_INFO_FIELDS`                      | `[]`                                  | custom user info fields JSON 
-`TOTP_ENABLED`                          | `False`                               | show field for TOTP secret in user form
-`GROUP_REGISTRATION_ENABLED`            | `True`                                | show GUI for registrable groups and group registration requests
-`DEFAULT_LOCALE`                        | `en`                                  | set locale for notification mails
-`MAIL_SERVER`                           | `localhost`                           | [Flask-Mail](https://pythonhosted.org/Flask-Mail/) options (for sending notifications)
-`MAIL_PORT`                             | `25`                                  | "
-`MAIL_USE_TLS`                          | `False`                               | "
-`MAIL_USE_SSL`                          | `False`                               | "
-`MAIL_DEBUG`                            | `app.debug`                           | "
-`MAIL_USERNAME`                         | `None`                                | "
-`MAIL_PASSWORD`                         | `None`                                | "
-`MAIL_DEFAULT_SENDER`                   | `None`                                | "
-`MAIL_MAX_EMAILS`                       | `None`                                | "
-`MAIL_SUPPRESS_SEND`                    | `app.testing`                         | "
-`MAIL_ASCII_ATTACHMENTS`                | `False`                               | "
-
-
-#### [Registration GUI](https://github.com/qwc-services/qwc-registration-gui#configuration)
-
-ENV                                     | default value                         | description
-----------------------------------------|---------------------------------------|---------
-`JWT_SECRET_KEY`                        | `********`                            | secret key for JWT token (same for all services) 
-
-
-ENV (optional)                          | default value                         | description
-----------------------------------------|---------------------------------------|---------
-`ADMIN_RECIPIENTS`                      | `None`                                | comma separated list of admin users who should be notified of new registration requests
-`DEFAULT_LOCALE`                        | `en`                                  | set locale for application form and notification mails
-`MAIL_SERVER`                           | `localhost`                           | [Flask-Mail](https://pythonhosted.org/Flask-Mail/) options (for sending notifications)
-`MAIL_PORT`                             | `25`                                  | "
-`MAIL_USE_TLS`                          | `False`                               | "
-`MAIL_USE_SSL`                          | `False`                               | "
-`MAIL_DEBUG`                            | `app.debug`                           | "
-`MAIL_USERNAME`                         | `None`                                | "
-`MAIL_PASSWORD`                         | `None`                                | "
-`MAIL_DEFAULT_SENDER`                   | `None`                                | "
-`MAIL_MAX_EMAILS`                       | `None`                                | "
-`MAIL_SUPPRESS_SEND`                    | `app.testing`                         | "
-`MAIL_ASCII_ATTACHMENTS`                | `False`                               | "
-
-
-#### [Config service](https://github.com/qwc-services/qwc-config-service#configuration)
-
-ENV                                     | default value                         | description
-----------------------------------------|---------------------------------------|---------
-`QGIS_SERVER_URL`                       | `http://localhost:8001/ows/`          | QGIS server URL
-`QGIS_RESOURCES_PATH`                   | `qgs/`                                | QGIS project files path
-`QWC2_PATH`                             | `qwc2/`                               | QWC2 files path
-`QWC2_THEMES_CONFIG`                    | `$QWC2_PATH/themesConfig.json`        | QWC2 `themesConfig.json` path
-`DEFAULT_ALLOW`                         | `True`                                | set whether some resources are permitted or restricted by default (see [Permissions](#permissions))
-
-
-#### [OGC service](https://github.com/qwc-services/qwc-ogc-service#usage)
-
-ENV                                     | default value                         | description
-----------------------------------------|---------------------------------------|---------
-`JWT_SECRET_KEY`                        | `********`                            | secret key for JWT token (same for all services) 
-`QGIS_SERVER_URL`                       | `http://localhost:8001/ows/`          | QGIS server URL
-`CONFIG_SERVICE_URL`                    | `http://localhost:5010/`              | QWC Config service URL
-
-
-ENV (optional)                          | default value                         | description
-----------------------------------------|---------------------------------------|---------
-`CONFIG_CHECK_INTERVAL`                 | `60`s                                 | check if config cache is valid every x seconds
-`DEFAULT_CONFIG_CACHE_DURATION`         | `86400`s (24h)                        | time in seconds until config cache expiry
-
-
-#### [Data service](https://github.com/qwc-services/qwc-data-service#usage)
-
-ENV                                     | default value                         | description
-----------------------------------------|---------------------------------------|---------
-`JWT_SECRET_KEY`                        | `********`                            | secret key for JWT token (same for all services) 
-`CONFIG_SERVICE_URL`                    | `http://localhost:5010/`              | QWC Config service URL
-
-
-ENV (optional)                          | default value                         | description
-----------------------------------------|---------------------------------------|---------
-`CONFIG_CHECK_INTERVAL`                 | `60`s                                 | check if config cache is valid every x seconds
-`DEFAULT_CONFIG_CACHE_DURATION`         | `86400`s (24h)                        | time in seconds until config cache expiry
-
-
-#### [Authentication service with local user database](https://github.com/qwc-services/qwc-db-auth#configuration)
-
-ENV                                     | default value                         | description
-----------------------------------------|---------------------------------------|---------
-`JWT_SECRET_KEY`                        | `********`                            | secret key for JWT token (same for all services) 
-
-
-ENV (optional)                          | default value                         | description
-----------------------------------------|---------------------------------------|---------
-`MAX_LOGIN_ATTEMPTS`                    | `20`                                  | maximum number of 
-failed login attempts before sign in is blocked for an user
-`POST_PARAM_LOGIN`                      | `False`                               | activate (insecure) plain POST login
-`TOTP_ENABLED`                          | `False`                               | enable two factor authentication using TOTP
-`TOTP_ISSUER_NAME`                      | `QWC Services`                        | issuer name for TOTP QR code
-`MAIL_SERVER`                           | `localhost`                           | [Flask-Mail](https://pythonhosted.org/Flask-Mail/) options (for sending password recovery instructions)
-`MAIL_PORT`                             | `25`                                  | "
-`MAIL_USE_TLS`                          | `False`                               | "
-`MAIL_USE_SSL`                          | `False`                               | "
-`MAIL_DEBUG`                            | `app.debug`                           | "
-`MAIL_USERNAME`                         | `None`                                | "
-`MAIL_PASSWORD`                         | `None`                                | "
-`MAIL_DEFAULT_SENDER`                   | `None`                                | "
-`MAIL_MAX_EMAILS`                       | `None`                                | "
-`MAIL_SUPPRESS_SEND`                    | `app.testing`                         | "
-`MAIL_ASCII_ATTACHMENTS`                | `False`                               | "
 
 
 Resources and Permissions
