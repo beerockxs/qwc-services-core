@@ -112,7 +112,7 @@ class PermissionClient():
 
         # send request to permission service
         response = requests.get(url, headers=self.headers, params=reqparams,
-                                timeout=60)
+                                timeout=30)
         if response.status_code == requests.codes.ok:
             if convert_int_keys:
                 permissions = {}
